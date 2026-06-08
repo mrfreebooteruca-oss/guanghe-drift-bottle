@@ -1,0 +1,30 @@
+.DS_Store
+*.log
+
+# Local dependency/build/cache output
+node_modules/
+dist/
+.wrangler/
+worker-configuration.d.ts
+*.tsbuildinfo
+
+# Local environment and secret files
+.env
+.env.local
+.env.*.local
+.env.production
+.dev.vars
+
+# Private source docs and exported data
+*.doc
+*.docx
+*.pdf
+web/backups/d1/
+web/scripts/preseed.generated.sql
+
+# Local test/browser artifacts
+*.har
+*.zip
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

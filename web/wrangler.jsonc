@@ -1,0 +1,112 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "guanghe-drift-bottle",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-06-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/media/*"]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.2
+  },
+  "vars": {
+    "ENVIRONMENT": "development",
+    "APP_NAME": "光核安利漂流瓶",
+    "MAX_DAILY_DREDGES": "4",
+    "CLERK_AUTH_ENABLED": "false",
+    "ADMIN_USER_IDS": "",
+    "TURNSTILE_SITE_KEY": "",
+    "TURNSTILE_REQUIRED": "false",
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "guanghe-drift-bottle-db",
+      "database_id": "c924c040-0d04-40f5-b45b-d7681ef7f844"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BOTTLE_IMAGES",
+      "bucket_name": "guanghe-drift-bottle-images"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "GH_CONFIG",
+      "id": "9c6976fd3bba481396bf9f4db3368932"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "MODERATION_QUEUE",
+        "queue": "guanghe-drift-bottle-moderation"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "guanghe-drift-bottle-moderation",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30
+      }
+    ]
+  },
+  "env": {
+    "production": {
+      "name": "guanghe-drift-bottle-production",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "APP_NAME": "光核安利漂流瓶",
+        "MAX_DAILY_DREDGES": "4",
+        "CLERK_AUTH_ENABLED": "true",
+        "ADMIN_USER_IDS": "",
+        "TURNSTILE_SITE_KEY": "",
+        "TURNSTILE_REQUIRED": "true",
+        "ALLOWED_ORIGINS": "https://guanghe-drift-bottle-production.adwardhuanguca.workers.dev"
+      },
+      "secrets": {
+        "required": ["CLERK_SECRET_KEY", "TURNSTILE_SECRET_KEY"]
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "guanghe-drift-bottle-db",
+          "database_id": "c924c040-0d04-40f5-b45b-d7681ef7f844"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "BOTTLE_IMAGES",
+          "bucket_name": "guanghe-drift-bottle-images"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "GH_CONFIG",
+          "id": "9c6976fd3bba481396bf9f4db3368932"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "MODERATION_QUEUE",
+            "queue": "guanghe-drift-bottle-moderation"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "guanghe-drift-bottle-moderation",
+            "max_batch_size": 10,
+            "max_batch_timeout": 30
+          }
+        ]
+      }
+    }
+  }
+}
