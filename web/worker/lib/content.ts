@@ -53,7 +53,9 @@ export async function validateBottleInput(env: RuntimeEnv, input: BottleInput) {
   const combined = `${title} ${gameName} ${description}`.toLowerCase();
   const hit = sensitiveWords.find((word) => combined.includes(word.toLowerCase()));
   if (hit) {
-    throw new ApiError(400, "sensitive_content", `内容包含不适合公开展示的词：${hit}`);
+    // 命中的具体词只写服务端日志，不回显给客户端，避免被逐词枚举出整张词表。
+    console.error(JSON.stringify({ type: "sensitive_content_blocked", word: hit }));
+    throw new ApiError(400, "sensitive_content", "内容包含不适合公开展示的表述，请修改后重试。");
   }
 
   return {

@@ -31,7 +31,18 @@ export async function enforceRateLimit(env: RuntimeEnv, options: RateLimitOption
   };
   const ttl = Math.max(60, Math.ceil((next.resetAt - now) / 1000) + 5);
 
-  await env.GH_CONFIG.put(key, JSON.stringify(next), { expirationTtl: ttl });
+  try {
+    await env.GH_CONFIG.put(key, JSON.stringify(next), { expirationTtl: ttl });
+  } catch (error) {
+    // KV 对同一个键有写入频率上限。共享 IP 桶写失败时只丢这一次计数，不能让正常用户的请求 500。
+    console.error(
+      JSON.stringify({
+        type: "rate_limit_write_failed",
+        scope: options.parts[0] ?? "unknown",
+        message: error instanceof Error ? error.message : String(error)
+      })
+    );
+  }
 }
 
 function safeKeyPart(value: string) {

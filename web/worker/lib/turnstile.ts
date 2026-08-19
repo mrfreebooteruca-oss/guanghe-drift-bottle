@@ -10,12 +10,18 @@ type TurnstileResponse = {
   cdata?: string;
 };
 
-export async function verifyTurnstile(env: RuntimeEnv, token: string | null, remoteIp?: string) {
+export async function verifyTurnstile(
+  env: RuntimeEnv,
+  token: string | null,
+  remoteIp?: string,
+  allowUnconfigured = false
+) {
   const required = env.TURNSTILE_REQUIRED === "true";
   const secret = env.TURNSTILE_SECRET_KEY;
 
   if (!secret) {
-    if (required) {
+    // 缺密钥时默认拒绝，只有本机开发进程可以跳过，避免两个开关同时写错就等于零防护。
+    if (required || !allowUnconfigured) {
       throw new ApiError(500, "turnstile_not_configured", "人机校验尚未配置。");
     }
     return;

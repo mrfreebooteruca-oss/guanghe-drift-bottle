@@ -14,10 +14,10 @@
     "head_sampling_rate": 0.2
   },
   "vars": {
-    "ENVIRONMENT": "development",
+    "ENVIRONMENT": "production",
     "APP_NAME": "光核安利漂流瓶",
     "MAX_DAILY_DREDGES": "4",
-    "CLERK_AUTH_ENABLED": "false",
+    "CLERK_AUTH_ENABLED": "true",
     "ADMIN_USER_IDS": "",
     "TURNSTILE_SITE_KEY": "",
     "TURNSTILE_REQUIRED": "false",

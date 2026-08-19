@@ -207,9 +207,11 @@ function addContentAndOpsGates() {
     "Content And Ops",
     "Clerk production auth boundary",
     workerAuth.includes('import { verifyToken } from "@clerk/backend"') &&
-      workerAuth.includes('const authEnabled = c.env.CLERK_AUTH_ENABLED === "true"') &&
-      workerAuth.includes('if (!authEnabled && devUser)') &&
-      workerAuth.includes('if (!authEnabled && c.env.ENVIRONMENT !== "production")') &&
+      workerAuth.includes("isLocalDevRequest(c.req.raw)") &&
+      workerAuth.includes("if (user.isDemo)") &&
+      workerHttp.includes("export function isLocalDevRequest(request: Request)") &&
+      workerHttp.includes('request.headers.get("CF-Ray")') &&
+      !workerIndex.includes("X-Dev-User") &&
       workerAuth.includes("extractToken(c)") &&
       workerAuth.includes("auth_required") &&
       workerAuth.includes("verifyToken(token") &&
@@ -233,6 +235,7 @@ function addContentAndOpsGates() {
       workerIndex.includes('String(form.get("turnstileToken") ?? "") || null') &&
       workerTurnstile.includes('const required = env.TURNSTILE_REQUIRED === "true"') &&
       workerTurnstile.includes("const secret = env.TURNSTILE_SECRET_KEY") &&
+      workerTurnstile.includes("if (required || !allowUnconfigured)") &&
       workerTurnstile.includes("turnstile_not_configured") &&
       workerTurnstile.includes("turnstile_required") &&
       workerTurnstile.includes("https://challenges.cloudflare.com/turnstile/v0/siteverify") &&

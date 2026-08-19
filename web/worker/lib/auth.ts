@@ -1,6 +1,6 @@
 import { verifyToken } from "@clerk/backend";
 import type { Context, Next } from "hono";
-import { ApiError } from "./http";
+import { ApiError, isLocalDevRequest } from "./http";
 import type { AuthUser, RuntimeEnv } from "./types";
 
 type Variables = {
@@ -18,44 +18,48 @@ export async function requireUser(
 }
 
 async function authenticate(c: Context<{ Bindings: RuntimeEnv; Variables: Variables }>): Promise<AuthUser> {
-  const authEnabled = c.env.CLERK_AUTH_ENABLED === "true";
-  const devUser = c.req.header("X-Dev-User");
-
-  if (!authEnabled && devUser) {
-    return {
-      id: sanitizeUserId(devUser),
-      displayName: "光核演示玩家",
-      isDemo: true
-    };
-  }
-
-  if (!authEnabled && c.env.ENVIRONMENT !== "production") {
-    return {
-      id: "demo-user-local",
-      displayName: "光核演示玩家",
-      isDemo: true
-    };
-  }
-
   const token = extractToken(c);
-  if (!token) {
-    throw new ApiError(401, "auth_required", "请先登录后再继续。");
+
+  if (token) {
+    let verified: Awaited<ReturnType<typeof verifyToken>>;
+    try {
+      verified = await verifyToken(token, {
+        secretKey: c.env.CLERK_SECRET_KEY,
+        jwtKey: c.env.CLERK_JWT_KEY
+      });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          type: "clerk_verify_failed",
+          message: error instanceof Error ? error.message : String(error)
+        })
+      );
+      throw new ApiError(401, "invalid_session", "登录状态无效，请重新登录。");
+    }
+
+    if (!verified.sub) {
+      throw new ApiError(401, "invalid_session", "登录状态无效，请重新登录。");
+    }
+
+    return {
+      id: verified.sub,
+      displayName: "光核玩家",
+      isDemo: false
+    };
   }
 
-  const verified = await verifyToken(token, {
-    secretKey: c.env.CLERK_SECRET_KEY,
-    jwtKey: c.env.CLERK_JWT_KEY
-  });
-
-  if (!verified.sub) {
-    throw new ApiError(401, "invalid_session", "登录状态无效，请重新登录。");
+  // 演示身份只在本机开发进程内成立（localhost 主机名且无 CF-Ray）。线上无凭据一律 401，
+  // 不受 CLERK_AUTH_ENABLED / ENVIRONMENT 这类可写错的变量影响。
+  if (isLocalDevRequest(c.req.raw)) {
+    const devUser = c.req.header("X-Dev-User");
+    return {
+      id: devUser ? sanitizeUserId(devUser) : "demo-user-local",
+      displayName: "光核演示玩家",
+      isDemo: true
+    };
   }
 
-  return {
-    id: verified.sub,
-    displayName: "光核玩家",
-    isDemo: false
-  };
+  throw new ApiError(401, "auth_required", "请先登录后再继续。");
 }
 
 function extractToken(c: Context<{ Bindings: RuntimeEnv; Variables: Variables }>) {
@@ -91,6 +95,11 @@ export async function ensureUser(env: RuntimeEnv, user: AuthUser) {
 }
 
 export function isAdminUser(env: RuntimeEnv, user: AuthUser) {
+  // 后台只认经 Clerk 签名校验过的真实会话；本地演示身份的 id 由请求头决定，永远不给管理权限。
+  if (user.isDemo) {
+    return false;
+  }
+
   const adminIds = (env.ADMIN_USER_IDS ?? "")
     .split(",")
     .map((item) => item.trim())

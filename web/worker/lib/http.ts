@@ -14,6 +14,25 @@ type ApiErrorBody = {
   };
 };
 
+const LOCAL_DEV_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+/**
+ * 只有跑在本机 workerd 进程里的请求才算本地开发请求：主机名是回环地址，且没有 Cloudflare
+ * 边缘注入的 CF-Ray 头。线上部署的 Worker 永远拿不到这个 true，所以开发用的放行分支不会
+ * 因为某个环境变量写错而在公网生效。
+ */
+export function isLocalDevRequest(request: Request) {
+  if (request.headers.get("CF-Ray")) {
+    return false;
+  }
+
+  try {
+    return LOCAL_DEV_HOSTNAMES.has(new URL(request.url).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;

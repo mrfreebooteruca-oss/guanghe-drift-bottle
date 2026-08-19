@@ -302,19 +302,21 @@ function checkSecurityHeaderSmokeContracts() {
 
 function checkClerkAuthBoundaryContract() {
   const workerAuth = path.join(root, "worker/lib/auth.ts");
+  const workerHttp = path.join(root, "worker/lib/http.ts");
+  const workerIndex = path.join(root, "worker/index.ts");
   const productionAuthSmoke = path.join(root, "scripts/smoke-production-auth.mjs");
-  if (!existsSync(workerAuth) || !existsSync(productionAuthSmoke)) {
-    failures.push("Clerk auth boundary contract: auth module or production auth smoke is missing");
+  if (!existsSync(workerAuth) || !existsSync(workerHttp) || !existsSync(workerIndex) || !existsSync(productionAuthSmoke)) {
+    failures.push("Clerk auth boundary contract: auth module, http module, Worker entry, or production auth smoke is missing");
     return;
   }
 
   const authContent = readFileSync(workerAuth, "utf8");
+  const httpContent = readFileSync(workerHttp, "utf8");
+  const indexContent = readFileSync(workerIndex, "utf8");
   const smokeContent = readFileSync(productionAuthSmoke, "utf8");
   const requiredParts = [
     [authContent, 'import { verifyToken } from "@clerk/backend"'],
-    [authContent, 'const authEnabled = c.env.CLERK_AUTH_ENABLED === "true"'],
-    [authContent, 'if (!authEnabled && devUser)'],
-    [authContent, 'if (!authEnabled && c.env.ENVIRONMENT !== "production")'],
+    [authContent, "isLocalDevRequest(c.req.raw)"],
     [authContent, "extractToken(c)"],
     [authContent, "auth_required"],
     [authContent, "verifyToken(token"],
@@ -323,6 +325,10 @@ function checkClerkAuthBoundaryContract() {
     [authContent, "invalid_session"],
     [authContent, "Authorization"],
     [authContent, "__session="],
+    [authContent, "if (user.isDemo)"],
+    [httpContent, "export function isLocalDevRequest(request: Request)"],
+    [httpContent, 'request.headers.get("CF-Ray")'],
+    [httpContent, "LOCAL_DEV_HOSTNAMES.has(new URL(request.url).hostname.toLowerCase())"],
     [smokeContent, "GET /api/bootstrap dev header ignored"],
     [smokeContent, '"X-Dev-User": "production-smoke-dev-user"'],
     [smokeContent, "auth_required"]
@@ -332,6 +338,10 @@ function checkClerkAuthBoundaryContract() {
     if (!content.includes(part)) {
       failures.push(`Clerk auth boundary contract missing ${part}`);
     }
+  }
+
+  if (indexContent.includes("X-Dev-User")) {
+    failures.push("worker/index.ts: X-Dev-User must not be advertised in CORS allowHeaders or any route");
   }
 }
 
@@ -352,8 +362,10 @@ function checkTurnstileContract() {
     [indexContent, 'turnstileRequired: c.env.TURNSTILE_REQUIRED === "true"'],
     [indexContent, "await verifyTurnstile("],
     [indexContent, 'String(form.get("turnstileToken") ?? "") || null'],
+    [indexContent, "isLocalDevRequest(c.req.raw)"],
     [turnstileContent, 'const required = env.TURNSTILE_REQUIRED === "true"'],
     [turnstileContent, "const secret = env.TURNSTILE_SECRET_KEY"],
+    [turnstileContent, "if (required || !allowUnconfigured)"],
     [turnstileContent, "turnstile_not_configured"],
     [turnstileContent, "turnstile_required"],
     [turnstileContent, "https://challenges.cloudflare.com/turnstile/v0/siteverify"],
@@ -488,8 +500,15 @@ function checkRateLimitContract() {
     'parts: ["bottle", "user", user.id], limit: 12, windowSeconds: 86400',
     'parts: ["bottle", "ip", clientIp(c)], limit: 60, windowSeconds: 3600',
     'parts: ["dredge", "user", user.id], limit: 30, windowSeconds: 60',
+    'parts: ["dredge", "ip", clientIp(c)]',
     'parts: ["report", "user", user.id], limit: 20, windowSeconds: 86400',
-    'parts: ["share", "user", user.id], limit: 10, windowSeconds: 3600'
+    'parts: ["report", "ip", clientIp(c)]',
+    'parts: ["share", "user", user.id], limit: 10, windowSeconds: 3600',
+    'parts: ["share", "ip", clientIp(c)]',
+    'parts: ["wall", "user", user.id]',
+    'parts: ["wall", "ip", clientIp(c)]',
+    'parts: ["bootstrap", "user", user.id]',
+    'return c.req.header("CF-Connecting-IP") ?? "unknown"'
   ];
 
   for (const part of requiredParts) {

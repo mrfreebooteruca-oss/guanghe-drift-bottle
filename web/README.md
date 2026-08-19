@@ -48,7 +48,7 @@ npm run db:preseed:remote
 
 - Workers 预览：https://guanghe-drift-bottle.adwardhuanguca.workers.dev
 - 远端 D1/R2/KV/Queue 已创建，绑定见 `wrangler.jsonc`。
-- 当前预览使用演示身份；Clerk keys 配置后可切换真实登录。
+- 演示身份只在本机开发进程内生效（localhost 主机名且无 `CF-Ray`）；线上请求必须带 Clerk session token，缺凭据一律 401，`X-Dev-User` 不再被受理。
 - 当前预览后台接口默认拒绝未列入 `ADMIN_USER_IDS` 的用户；为空时所有用户都不能访问 `/api/admin/*`。
 - 最近部署版本：`2f271fae-1baf-40be-86fd-65d8272c1fd8`。
 - 远端 D1 当前有 100 条 `preseed-bottle-*` 预制内容，总瓶数 109。
@@ -69,7 +69,7 @@ npm run db:preseed:remote
 - 改 Worker 行为后优先跑 `npm run verify:local`；部署前继续跑 `verify:launch` / `verify:production` 和线上 smoke。
 - `npm run cf:check`、`npm run cf:check:production`、`npm run deploy:retry`、`npm run deploy:production:retry` 都必须先构建当前 bundle，不能用旧 `dist` 做 dry-run 或部署。
 - 改动数据库结构时新增 migration，不直接改旧 migration。
-- 生产开启 Turnstile 时，同时设置 `TURNSTILE_SITE_KEY`、`TURNSTILE_SECRET_KEY` 与 `TURNSTILE_REQUIRED=true`，并跑一次真实投递验证。
+- 生产开启 Turnstile 时，同时设置 `TURNSTILE_SITE_KEY`、`TURNSTILE_SECRET_KEY` 与 `TURNSTILE_REQUIRED=true`，并跑一次真实投递验证。缺 `TURNSTILE_SECRET_KEY` 时 `POST /api/bottles` 直接返回 `turnstile_not_configured`（只有本机开发进程放行），不再静默跳过人机校验。
 - 生产发布前先跑 `npm run launch:readiness`；部署 production Worker 后再跑 `npm run launch:readiness:remote:strict` 验证 Cloudflare 端 secret 名称和 production CORS origin。
 - Production Worker 创建后跑 `npm run smoke:production:auth`，验证未登录 API 401、`X-Dev-User` 不绕过认证、production CORS 和安全头。
 - Production Worker 创建并拿到真实 Clerk 管理员 session 后跑 `SMOKE_ADMIN_BEARER_TOKEN=<clerk-admin-session-jwt> npm run smoke:production:admin`，只读验证后台 metrics、审核列表、事件流、CSV 导出和 storage audit；可同时设置 `SMOKE_NON_ADMIN_BEARER_TOKEN` 验证普通用户后台 403。

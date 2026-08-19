@@ -24,7 +24,17 @@ import {
   recordEvent,
   remainingQuota
 } from "./lib/db";
-import { ApiError, errorBoundary, getToday, jsonError, jsonOk, requestId, securityHeaders, toInt } from "./lib/http";
+import {
+  ApiError,
+  errorBoundary,
+  getToday,
+  isLocalDevRequest,
+  jsonError,
+  jsonOk,
+  requestId,
+  securityHeaders,
+  toInt
+} from "./lib/http";
 import { checkBindings } from "./lib/health";
 import { enforceRateLimit } from "./lib/rateLimit";
 import { isReportReason, submitBottleReport } from "./lib/reports";
@@ -85,7 +95,7 @@ app.use(
       return allowed.includes(origin) ? origin : "";
     },
     allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["Authorization", "Content-Type", "X-Dev-User"],
+    allowHeaders: ["Authorization", "Content-Type"],
     credentials: true
   })
 );
@@ -103,6 +113,7 @@ app.get("/api/health", async (c) => {
 
 app.get("/api/bootstrap", requireUser, async (c) => {
   const user = c.get("user");
+  await enforceRateLimit(c.env, { parts: ["bootstrap", "user", user.id], limit: 600, windowSeconds: 3600 });
   const quota = await ensureDailyQuota(c.env, user);
   const [latest, featured, wall, metrics] = await Promise.all([
     listLatestBottles(c.env, 8),
@@ -149,7 +160,8 @@ app.post("/api/bottles", requireUser, async (c) => {
   await verifyTurnstile(
     c.env,
     String(form.get("turnstileToken") ?? "") || null,
-    c.req.header("CF-Connecting-IP")
+    c.req.header("CF-Connecting-IP"),
+    isLocalDevRequest(c.req.raw)
   );
   const input = await validateBottleInput(c.env, {
     title: String(form.get("title") ?? ""),
@@ -234,7 +246,10 @@ app.post("/api/bottles", requireUser, async (c) => {
 
 app.post("/api/dredge", requireUser, async (c) => {
   const user = c.get("user");
-  await enforceRateLimit(c.env, { parts: ["dredge", "user", user.id], limit: 30, windowSeconds: 60 });
+  await Promise.all([
+    enforceRateLimit(c.env, { parts: ["dredge", "user", user.id], limit: 30, windowSeconds: 60 }),
+    enforceRateLimit(c.env, { parts: ["dredge", "ip", clientIp(c)], limit: 600, windowSeconds: 3600 })
+  ]);
   const quota = await ensureDailyQuota(c.env, user);
   if (remainingQuota(c.env, quota) <= 0) {
     throw new ApiError(429, "quota_exhausted", "今日打捞次数已经用完。");
@@ -310,7 +325,10 @@ app.post("/api/dredge", requireUser, async (c) => {
 
 app.post("/api/bottles/:id/report", requireUser, async (c) => {
   const user = c.get("user");
-  await enforceRateLimit(c.env, { parts: ["report", "user", user.id], limit: 20, windowSeconds: 86400 });
+  await Promise.all([
+    enforceRateLimit(c.env, { parts: ["report", "user", user.id], limit: 20, windowSeconds: 86400 }),
+    enforceRateLimit(c.env, { parts: ["report", "ip", clientIp(c)], limit: 300, windowSeconds: 3600 })
+  ]);
 
   const bottleId = (c.req.param("id") ?? "").trim();
   if (!bottleId || bottleId.length > 80 || !/^[a-z0-9-]+$/i.test(bottleId)) {
@@ -346,6 +364,10 @@ app.post("/api/bottles/:id/report", requireUser, async (c) => {
 
 app.post("/api/wall", requireUser, async (c) => {
   const user = c.get("user");
+  await Promise.all([
+    enforceRateLimit(c.env, { parts: ["wall", "user", user.id], limit: 120, windowSeconds: 3600 }),
+    enforceRateLimit(c.env, { parts: ["wall", "ip", clientIp(c)], limit: 600, windowSeconds: 3600 })
+  ]);
   const payload = await c.req.json<{ bottleId?: string; slot?: number; layout?: "grid4" | "grid9" }>();
   const bottleId = payload.bottleId?.trim();
   const slot = Number(payload.slot);
@@ -389,7 +411,10 @@ app.post("/api/wall", requireUser, async (c) => {
 
 app.post("/api/tasks/share", requireUser, async (c) => {
   const user = c.get("user");
-  await enforceRateLimit(c.env, { parts: ["share", "user", user.id], limit: 10, windowSeconds: 3600 });
+  await Promise.all([
+    enforceRateLimit(c.env, { parts: ["share", "user", user.id], limit: 10, windowSeconds: 3600 }),
+    enforceRateLimit(c.env, { parts: ["share", "ip", clientIp(c)], limit: 300, windowSeconds: 3600 })
+  ]);
   const quota = await ensureDailyQuota(c.env, user);
   if (quota.share_count >= 1) {
     return jsonOk({
@@ -622,7 +647,9 @@ function makeTasks(quota: Awaited<ReturnType<typeof getDailyQuota>>) {
 }
 
 function clientIp(c: Context<{ Bindings: RuntimeEnv; Variables: Variables }>) {
-  return c.req.header("CF-Connecting-IP") ?? c.req.header("X-Forwarded-For") ?? "unknown";
+  // 只认 Cloudflare 边缘写入的 CF-Connecting-IP；X-Forwarded-For 由调用方自填，用它做限流维度
+  // 等于把限流开关交给攻击者。
+  return c.req.header("CF-Connecting-IP") ?? "unknown";
 }
 
 function secureRandomInt(maxExclusive: number) {
